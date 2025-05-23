@@ -1,0 +1,148 @@
+<!-- file: index.html -->
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>Gioco del Tris Online</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 2rem;
+      background-color: #f0f0f0;
+    }
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 100px);
+      grid-template-rows: repeat(3, 100px);
+      gap: 5px;
+      margin: 1rem auto;
+    }
+    .cell {
+      background-color: white;
+      border: 2px solid #333;
+      font-size: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+    }
+    .cell:hover {
+      background-color: #e0e0e0;
+    }
+    .message {
+      margin: 1rem 0;
+      font-size: 1.2rem;
+    }
+    .scoreboard {
+      margin-bottom: 1rem;
+      font-weight: bold;
+    }
+    #restart {
+      margin-top: 1rem;
+      padding: 0.5rem 1rem;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tris Online</h1>
+  <div class="scoreboard" id="scoreboard">Punteggio - X: 0 | O: 0</div>
+  <div class="board" id="board"></div>
+  <div class="message" id="message">In attesa di connessione...</div>
+  <button id="restart">Ricomincia partita</button>
+
+  <script src="http://localhost:3000/socket.io/socket.io.js"></script>
+  <script>
+    console.log("Connecting to backend...");
+    const socket = io("http://localhost:3000");
+
+    socket.on("connect", () => {
+      console.log("Connesso al backend");
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("Errore di connessione:", err.message);
+    });
+    const boardEl = document.getElementById('board');
+    const messageEl = document.getElementById('message');
+    const restartBtn = document.getElementById('restart');
+    const scoreboardEl = document.getElementById('scoreboard');
+
+    let isMyTurn = false;
+    let symbol = null;
+    let score = { X: 0, O: 0 };
+
+    function renderBoard() {
+      boardEl.innerHTML = '';
+      for (let i = 0; i < 9; i++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.dataset.index = i;
+        boardEl.appendChild(cell);
+      }
+    }
+
+    function updateBoard(index, playerSymbol) {
+      const cell = boardEl.querySelector(`[data-index='${index}']`);
+      if (cell && !cell.textContent) cell.textContent = playerSymbol;
+    }
+
+    function updateScore() {
+      scoreboardEl.textContent = `Punteggio - X: ${score.X} | O: ${score.O}`;
+    }
+
+    boardEl.addEventListener('click', (e) => {
+      const cell = e.target;
+      const index = cell.dataset.index;
+      if (!isMyTurn || cell.textContent || !index) return;
+      socket.emit('makeMove', parseInt(index));
+    });
+
+    socket.on('gameStart', (data) => {
+      symbol = data.symbol;
+      isMyTurn = symbol === 'X';
+      renderBoard();
+      messageEl.textContent = `Sei il giocatore ${symbol}. ${isMyTurn ? 'Tocca a te.' : 'Attendi l\'avversario.'}`;
+    });
+
+    socket.on('moveMade', (data) => {
+      updateBoard(data.index, data.symbol);
+      isMyTurn = data.symbol !== symbol;
+      messageEl.textContent = isMyTurn ? 'Tocca a te.' : 'Attendi l\'avversario.';
+    });
+
+    socket.on('gameOver', (data) => {
+      updateBoard(data.index, data.symbol);
+      messageEl.textContent = data.message;
+      isMyTurn = false;
+      score[data.symbol]++;
+      updateScore();
+    });
+
+    socket.on('draw', () => {
+      messageEl.textContent = 'Pareggio!';
+      isMyTurn = false;
+    });
+
+    socket.on('waiting', () => {
+      messageEl.textContent = 'In attesa di un altro giocatore...';
+    });
+
+    restartBtn.addEventListener('click', () => {
+      socket.emit('restartGame');
+    });
+
+    socket.on('restartGame', () => {
+      renderBoard();
+      isMyTurn = symbol === 'X';
+      messageEl.textContent = `Partita riavviata. Sei il giocatore ${symbol}. ${isMyTurn ? 'Tocca a te.' : 'Attendi l\'avversario.'}`;
+    });
+
+    renderBoard();
+    updateScore();
+  </script>
+</body>
+</html>
